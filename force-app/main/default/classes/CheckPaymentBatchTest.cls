@@ -1,5 +1,5 @@
 @isTest
-public class CheckPaymentBatchTest {
+private class CheckPaymentBatchTest {
     @TestSetup
     static void setup(){
         //tworzenie kontaktu
@@ -29,12 +29,10 @@ public class CheckPaymentBatchTest {
 
     @isTest
     static void test(){
-
-        Test.startTest();
+        System.Test.startTest();
         CheckPaymentBatch cpb = new CheckPaymentBatch();
-        Database.executeBatch(cpb);
-
-        Test.stopTest();
+        Id batchId = Database.executeBatch(cpb);
+        System.Test.stopTest();
 
         //pobieranie zaktualizowanej szansy
         Opportunity updatedOpp = [SELECT Id, IsPaid__c, ReminderSentDate__c FROM Opportunity WHERE IsPaid__c = false LIMIT 1];
@@ -46,10 +44,11 @@ public class CheckPaymentBatchTest {
         System.assertEquals(1, emailsSent, 'jeden email zostal wyslany');
 
         //sprawdzanie czy zostala utworzona sprawa - case
-        List<Case> cases = [SELECT Id, Status, Subject FROM Case WHERE Id = :updatedOpp.Id];
+        List<Case> cases = [SELECT Id, Status, Subject, Description FROM Case WHERE IsClosed = false];
+        List<Opportunity> opp = [SELECT Id, StageName FROM Opportunity WHERE IsPaid__c = false AND ReminderSentDate__c = LAST_N_DAYS:7];
         System.assertEquals(1, cases.size(), 'jeden case zostal utworzony');
         System.assertEquals('niezaplacona faktura', cases[0].Subject, 'powinien zgadzac sie temat casa');
-        SYstem.assertEquals('New', cases[0].Status, 'status case powinien byc new');
+        System.assertEquals('New', cases[0].Status, 'status case powinien byc new');
 
         //sprawdzanie czy pole IsPaid__c zostalo ustawione na true
         System.assertEquals(true, updatedOpp.IsPaid__c);
