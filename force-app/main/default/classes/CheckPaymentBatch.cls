@@ -1,5 +1,7 @@
-global with sharing class CheckPaymentBatch implements 
-Database.Batchable<SObject>, Database.Stateful {
+global with sharing class CheckPaymentBatch implements Database.Batchable<SObject>, Database.Stateful {
+    private List<String> emailDetails = new List<String>();
+    private List<String> caseDetails = new List<String>();
+
     public Database.QueryLocator start(Database.BatchableContext BC){
         return Database.getQueryLocator([
             SELECT Id, IsPaid__c, CloseDate, ReminderSentDate__c, Name, StageName, AccountId
@@ -16,44 +18,45 @@ Database.Batchable<SObject>, Database.Stateful {
             opportunityIds.add(opp.Id);
         }
 
-        Map<Id, String> opportunityToEmailMap = new Map<Id, String>();
+        Map<Id, OpportunityContactRole> opportunityToContactRoleMap = new Map<Id, OpportunityContactRole>();
         for(OpportunityContactRole ocr : [
             SELECT OpportunityId, Contact.Email, Contact.Name
             FROM OpportunityContactRole
             WHERE OpportunityId IN :opportunityIds
         ]){
-            opportunityToEmailMap.put(ocr.OpportunityId, ocr.Contact.Email);
+            opportunityToContactRoleMap.put(ocr.OpportunityId, ocr);
         }
 
         for (Opportunity opp : scope){
-            System.debug('Processing Opportunity: ' + opp.Id);
-            System.debug('CLoseDate: ' + opp.CloseDate);
-            System.debug('ReminderSentDate__c: ' + opp.ReminderSentDate__c);
-            System.debug('Date.today(): ' + Date.today());
-
             if(Date.today() > opp.CloseDate.addDays(30) && opp.ReminderSentDate__c == null){
-                if(opportunityToEmailMap.containsKey(opp.Id)){
-                    String contactEmail = opportunityToEmailMap.get(opp.Id);
-                    System.debug('Sending email to: '+ contactEmail);
+                if(opportunityToContactRoleMap.containsKey(opp.Id)){
+                    OpportunityContactRole contactRole = opportunityToContactRoleMap.get(opp.Id);
+                    String contactEmail = contactRole.Contact.Name;
 
                     Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
                     mail.setToAddresses(new String[]{contactEmail});
                     mail.setSubject('お支払いのリマインダー');
                     mail.setPlainTextBody('請求書' + opp.Name + 'の支払いを' + Date.today().addDays(7) + 'までにお願いいたします。');
                     emails.add(mail);
-                    //aktualizowanie daty wyslania przypomnienia
                     opp.ReminderSentDate__c = Date.today();
-                    System.debug('zaktualizowany ReminderSentDate__c : '+ opp.ReminderSentDate__c);
+
+                    //for administrator report
+                    emailDetails.add('Sent email to ' + contactRole.Contact.Name + ' for Opportunity: ' + opp.Name + '\n');
+            }
+            if(Date.today() > opp.CloseDate.addDays(30)){
                 }  
-            }else if(opp.ReminderSentDate__c != null && opp.ReminderSentDate__c.addDays(7) < Date.today()){
+            }else if(opp.ReminderSentDate__c != null && opp.ReminderSentDate__c.addDays(7) == Date.today()){
+                OpportunityContactRole contactRole = opportunityToContactRoleMap.get(opp.Id);
                 Case newCase = new Case();
                 newCase.Subject = '未払いの請求書';
                 newCase.Description = '商談' + opp.Name + 'の請求書が支払われていません。';
                 newCase.Status = 'New';
                 newCase.AccountId = opp.AccountId;
-                newCase.ContactId = Contact.Name;
+                newCase.ContactId = contactRole.Contact.Id;
                 cases.add(newCase);
-                System.debug('Created Case for Opportunity: ' + opp.Id);
+
+                //for administrator report
+                caseDetails.add('Case created for Opportunity: ' + opp.Name + ', Contact: ' + contactRole.Contact.Name + '\n');
             }
         }
         if (!emails.isEmpty()){
@@ -62,12 +65,22 @@ Database.Batchable<SObject>, Database.Stateful {
         if (!cases.isEmpty()){
             insert cases;
         }
-    
-        System.debug('Before update: '+ scope);
         update scope;
-        System.debug('After update: '+ scope);
     }
     global void finish(Database.BatchableContext BC){
+        User sysAdmin = [SELECT Id, Email FROM User WHERE Profile.Name = 'System Administrator' AND IsActive = true LIMIT 1];
+        String adminEmail = sysAdmin.Email;
 
+        //Przygotowanie tresci email
+        String emailBody = 'Raport z uruchomienia batcha CheckPaymentBatch: \n\n'+
+                            'Szczegoly wyslanych e-maili:\n' + String.join(emailDetails, '\n') +
+                            'Szczegoly wyslanych przypadkow:\n' + String.join(caseDetails, '\n');
+
+        Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
+        mail.setToAddresses(new String[]{adminEmail});
+        mail.setSubject('Podsumowanie uruchomienia batcha CheckPaymentBatch');
+        mail.setPlainTextBody(emailBody);
+
+        Messaging.sendEmail(new Messaging.SingleEmailMessage[]{mail});
     }
 }
