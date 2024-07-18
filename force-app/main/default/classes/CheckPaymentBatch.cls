@@ -31,7 +31,7 @@ global with sharing class CheckPaymentBatch implements Database.Batchable<SObjec
             if(Date.today() > opp.CloseDate.addDays(30) && opp.ReminderSentDate__c == null){
                 if(opportunityToContactRoleMap.containsKey(opp.Id)){
                     OpportunityContactRole contactRole = opportunityToContactRoleMap.get(opp.Id);
-                    String contactEmail = contactRole.Contact.Name;
+                    String contactEmail = contactRole.Contact.Email;
 
                     Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
                     mail.setToAddresses(new String[]{contactEmail});
@@ -41,10 +41,8 @@ global with sharing class CheckPaymentBatch implements Database.Batchable<SObjec
                     opp.ReminderSentDate__c = Date.today();
 
                     //for administrator report
-                    emailDetails.add('Sent email to ' + contactRole.Contact.Name + ' for Opportunity: ' + opp.Name + '\n');
-            }
-            if(Date.today() > opp.CloseDate.addDays(30)){
-                }  
+                    emailDetails.add('顧客：' + contactRole.Contact.Name + '、商談：' + opp.Name + '\n');
+                }
             }else if(opp.ReminderSentDate__c != null && opp.ReminderSentDate__c.addDays(7) == Date.today()){
                 OpportunityContactRole contactRole = opportunityToContactRoleMap.get(opp.Id);
                 Case newCase = new Case();
@@ -56,7 +54,7 @@ global with sharing class CheckPaymentBatch implements Database.Batchable<SObjec
                 cases.add(newCase);
 
                 //for administrator report
-                caseDetails.add('Case created for Opportunity: ' + opp.Name + ', Contact: ' + contactRole.Contact.Name + '\n');
+                caseDetails.add('商談：' + opp.Name + '、顧客：' + contactRole.Contact.Name + '\n');
             }
         }
         if (!emails.isEmpty()){
@@ -71,14 +69,13 @@ global with sharing class CheckPaymentBatch implements Database.Batchable<SObjec
         User sysAdmin = [SELECT Id, Email FROM User WHERE Profile.Name = 'System Administrator' AND IsActive = true LIMIT 1];
         String adminEmail = sysAdmin.Email;
 
-        //Przygotowanie tresci email
-        String emailBody = 'Raport z uruchomienia batcha CheckPaymentBatch: \n\n'+
-                            'Szczegoly wyslanych e-maili:\n' + String.join(emailDetails, '\n') +
-                            'Szczegoly wyslanych przypadkow:\n' + String.join(caseDetails, '\n');
+        String emailBody = 'CheckPaymentBatchバッチ実行レポート： \n\n'+
+                            '送信された顧客情報：\n' + String.join(emailDetails, '\n') +
+                            '作成されたケースの詳細：\n' + String.join(caseDetails, '\n');
 
         Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
         mail.setToAddresses(new String[]{adminEmail});
-        mail.setSubject('Podsumowanie uruchomienia batcha CheckPaymentBatch');
+        mail.setSubject('CheckPaymentBatchバッチ実行サマリー');
         mail.setPlainTextBody(emailBody);
 
         Messaging.sendEmail(new Messaging.SingleEmailMessage[]{mail});

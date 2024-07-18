@@ -13,6 +13,7 @@ private class CheckPaymentBatchTest {
         Account testAccount = new Account(
             Name = 'Test Account'
         );
+        insert testAccount;
         //tworzenie szansy z IsPaid__c = false
         Opportunity testOpp = new Opportunity(
             Name = 'Test Opportunity',
@@ -41,7 +42,7 @@ private class CheckPaymentBatchTest {
 
         //sprawdzanie czy email zostal wyslany
         Integer emailsSent = Limits.getEmailInvocations();
+        System.debug('Liczba wyslanych emaili: ' + emailsSent);
         System.assertEquals(1, emailsSent, 'jeden email zostal wyslany');
-
     }
 }
